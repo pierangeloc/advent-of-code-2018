@@ -19,7 +19,7 @@ object Day2 extends IOApp {
   implicit val blockingEC: ExecutionContextExecutor =
     ExecutionContext.fromExecutor(Executors.newFixedThreadPool(1))
 
-  val path = "/Users/pierangelo.cecchetto/Documents/projects/scala/piero/advent-of-code-2018/input/day2-1.txt"
+  val path = "input/day2-1.txt"
 
   def mulOccurrences(s: String): Set[Int] = s.toList
     .groupBy(identity)

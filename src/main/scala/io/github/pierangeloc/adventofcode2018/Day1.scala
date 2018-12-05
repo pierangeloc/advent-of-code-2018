@@ -22,7 +22,7 @@ object Day1 extends IOApp {
     ExecutionContext.fromExecutor(Executors.newFixedThreadPool(1))
 
   type Result[A] = Either[String, A]
-  val path = "/Users/pierangelo.cecchetto/Documents/projects/scala/piero/advent-of-code-2018/input/day1-1.txt"
+  val path = "input/day1-1.txt"
 
   def readInts[F[_] : Sync : ContextShift]: Stream[F, Either[Throwable, Int]] =
     Commons.readLines[F](path, blockingEC).map { s =>

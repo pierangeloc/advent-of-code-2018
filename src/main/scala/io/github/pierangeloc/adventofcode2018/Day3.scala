@@ -18,7 +18,7 @@ object Day3 extends IOApp {
   implicit val blockingEC: ExecutionContextExecutor =
     ExecutionContext.fromExecutor(Executors.newFixedThreadPool(1))
 
-  val path = "/Users/pierangelo.cecchetto/Documents/projects/scala/piero/advent-of-code-2018/input/day3-1.txt"
+  val path = "input/day3-1.txt"
 
   case class Vertex(x: Int, y: Int)
   case class Size(w: Int, h: Int)
