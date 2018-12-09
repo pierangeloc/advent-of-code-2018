@@ -21,6 +21,11 @@ object Commons {
       .split(byte => byte == '\n'.toByte)
       .map(chunk => new String(chunk.toArray[Byte], StandardCharsets.UTF_8))
 
+  def readChars[F[_] : Sync : ContextShift]
+  (path: String, blockingEC: ExecutionContextExecutor): Stream[F, Char] =
+    file.readAll[F](Paths.get(path), blockingEC, 1024)
+      .map(_.toChar)
+
   def putStrln(s: String) = IO.delay(println(s))
 
 }
