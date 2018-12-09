@@ -58,6 +58,7 @@ lazy val root = (project in file(".")).
     libraryDependencies += catsEffect,
     libraryDependencies += catsFree,
     libraryDependencies += catsCore,
+    libraryDependencies += mouse,
     libraryDependencies += scalaz,
     libraryDependencies += zio,
     libraryDependencies += fs2,
@@ -71,6 +72,7 @@ lazy val root = (project in file(".")).
     libraryDependencies ++= Seq(finchCore, finchCirce, circeGeneric),
     scalacOptions := scalacOpts,
     addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.4"),
+    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.0-M4"),
     addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
     resolvers ++= Seq(
       Resolver.sonatypeRepo("releases"),

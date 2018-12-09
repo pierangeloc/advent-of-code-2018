@@ -1,11 +1,12 @@
 package io.github.pierangeloc.adventofcode2018
 
 import java.time.format.DateTimeFormatter
-import java.time.{Instant, LocalDateTime}
+import java.time.{Instant, LocalDateTime, LocalTime}
 import java.util.concurrent.Executors
 
 import cats.effect.{ContextShift, ExitCode, IO, IOApp, Sync}
 import cats.implicits._
+import mouse.all._
 import fs2._
 
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutor}
@@ -52,63 +53,95 @@ object Day4 extends IOApp {
 
   sealed trait GuardState {
     val guardNr: Int
-    val minute: Int
+    val timestamp: LocalDateTime
   }
   object GuardState {
 
-    case class Awake(minute: Int, guardNr: Int) extends GuardState
+    case class Awake(timestamp: LocalDateTime, guardNr: Int) extends GuardState
 
-    case class Asleep(minute: Int, guardNr: Int) extends GuardState
+    case class Asleep(timestamp: LocalDateTime, guardNr: Int) extends GuardState
 
     def fromEventsWithGuardNr(events: List[(Int, Event)]): Stream[Pure, GuardState] = {
       def fromBeginShift(timestamp: LocalDateTime, guardNr: Int): Stream[Pure, GuardState] =
-        Stream.iterate(GuardState.Awake(timestamp.getMinute, guardNr))(awake => awake.copy(minute = awake.minute + 1))
+        Stream.iterate(GuardState.Awake(timestamp, guardNr))(awake => awake.copy(timestamp = awake.timestamp.plusMinutes(1)))
 
       def fromFallsAsleep(timestamp: LocalDateTime, guardNr: Int): Stream[Pure, GuardState] =
-        Stream.iterate(GuardState.Asleep(timestamp.toLocalTime.getMinute, guardNr))(asleep => asleep.copy(minute = asleep.minute + 1))
+        Stream.iterate(GuardState.Asleep(timestamp, guardNr))(asleep => asleep.copy(timestamp = asleep.timestamp.plusMinutes(1)))
 
       def fromWakesUp(timestamp: LocalDateTime, guardNr: Int): Stream[Pure, GuardState] =
-        Stream.iterate(GuardState.Awake(timestamp.toLocalTime.getMinute, guardNr))(awake => awake.copy(minute = awake.minute + 1))
+        Stream.iterate(GuardState.Awake(timestamp, guardNr))(awake => awake.copy(timestamp = awake.timestamp.plusMinutes(1)))
+
+      def isBefore(toEvent: Event)(gs: GuardState): Boolean = gs.timestamp.isBefore(toEvent.timestamp) &&
+        gs.timestamp.toLocalTime.compareTo(LocalTime.of(1, 0)) < 0 &&
+        (gs.timestamp.toLocalTime.compareTo(LocalTime.of(0, 0)) >= 0)
 
       Stream.emits(events.zip(events.tail :+ (events.last._1 -> Event.EndsShift.endOfTime))).flatMap {
                 case ((guardNr, Event.BeginsShift(timestamp, _)), toEvent) =>
-                  fromBeginShift(timestamp, guardNr).takeWhile(_.minute < toEvent._2.timestamp.toLocalTime.getMinute)
-                case ((guardNr, Event.FallsAsleep(timestamp)), toEvent) =>
-                  fromFallsAsleep(timestamp, guardNr).takeWhile(_.minute < toEvent._2.timestamp.toLocalTime.getMinute)
+                  fromBeginShift(timestamp, guardNr).takeWhile { isBefore(toEvent._2) }
+                    case ((guardNr, Event.FallsAsleep(timestamp)), toEvent) =>
+                  fromFallsAsleep(timestamp, guardNr).takeWhile { isBefore(toEvent._2) }
                 case ((guardNr, Event.WakesUp(timestamp)), toEvent) =>
-                  fromWakesUp(timestamp, guardNr).takeWhile(_.minute < toEvent._2.timestamp.toLocalTime.getMinute)
+                  fromWakesUp(timestamp, guardNr).takeWhile { isBefore(toEvent._2) }
                 case e =>
-                  println(s"skipping $e")
                   Stream.empty
       }
     }
   }
 
-  def part1[F[_] : Sync : ContextShift]: F[(List[(Int, Event)], List[GuardState])] = for {
+  def guardStatesDistribution[F[_] : Sync : ContextShift]: F[List[GuardState]] = for {
     events <- Commons.readLines[F](path, blockingEC).map(Event.fromString).collect { case Some(r) => r }.compile.toList
 
-    sortedEvents      = events.sortWith((e1, e2) => e1.timestamp.isBefore(e2.timestamp)).take(20)
+    sortedEvents      = events.sortWith((e1, e2) => e1.timestamp.isBefore(e2.timestamp))
     eventsWithGuardNr = sortedEvents.foldLeft(List[(Int, Event)]()) {
-        case (Nil, e @ Event.BeginsShift(_, guardNr))    => (guardNr, e) :: Nil
-        case (h :: t, e @ Event.BeginsShift(timestamp, guardNr)) => (guardNr, e) :: (h._1, Event.EndsShift(timestamp)) :: h :: t
-        case (eventsWithGuard, e)                        => (eventsWithGuard.head._1, e) :: eventsWithGuard
-      }.reverse
-    guardStates      = GuardState.fromEventsWithGuardNr(eventsWithGuardNr).toList
+      case (Nil, e @ Event.BeginsShift(_, guardNr))            => (guardNr, e) :: Nil
+      case (h :: t, e @ Event.BeginsShift(timestamp, guardNr)) => (guardNr, e) :: (h._1, Event.EndsShift(timestamp)) :: h :: t
+      case (eventsWithGuard, e)                                => (eventsWithGuard.head._1, e) :: eventsWithGuard
+    }.reverse
+    guardStates       = GuardState.fromEventsWithGuardNr(eventsWithGuardNr).toList
+  } yield guardStates
 
-//    eventsByShift = Stream.emits(sortedEvents).scan(List[Event]){
-//      case (events, Event.BeginsShift(_, _)) => true
-//      case _ => false
-//    }
-  } yield (eventsWithGuardNr, guardStates)
+  def mostFrequentValue[A](as: List[A]): (A, Int) = as.groupBy(identity).mapValues(_.length).toList.maxBy(_._2)
 
+  def part1(guardStates: List[GuardState]): (Int, Int, Int) = {
+    val guardMostAsleep = guardStates.filter {
+      case GuardState.Asleep(_, _) => true
+      case _ => false
+    }.groupBy(_.guardNr).mapValues(_.map(_ => 1).sum).toList.maxBy(_._2)._1
+    val minuteMostAsleep = guardStates.collect {
+      case GuardState.Asleep(ts, guardNr) if guardNr == guardMostAsleep => ts.toLocalTime.getMinute
+    } |> mostFrequentValue
+
+    (guardMostAsleep, minuteMostAsleep._1, guardMostAsleep * minuteMostAsleep._1)
+  }
+
+  def part2(guardStates: List[GuardState]): (Int, Int, Int) = {
+    val mostAsleepGuardByMinute: Map[Int, (Int, Int)] = guardStates.filter {
+      case GuardState.Asleep(_, _) => true
+      case _ => false
+    }.groupBy(_.timestamp.toLocalTime.getMinute).mapValues(_.map(_.guardNr) |> mostFrequentValue)
+    val (minute, (guardNr, _)) = mostAsleepGuardByMinute.maxBy {
+      case (sampleMinute, (mostAsleepGuard, asleepNr)) => asleepNr
+    }
+    (minute, guardNr, minute * guardNr)
+  }
 
   override def run(args: List[String]): IO[ExitCode] = for {
 
-    _ <- Commons.putStrln("Part 1...")
-    resPart1 <- part1[IO]
-    _ <- Commons.putStrln(s"Result = ${resPart1._1}\n${resPart1._2}")
+    _           <- Commons.putStrln("Part 1...")
+    guardStates <- guardStatesDistribution[IO]
+    resPart1    = part1(guardStates)
+    _ <- Commons.putStrln(s"""Guard most asleep = ${resPart1._1}
+      Minute most asleep = ${resPart1._2}
+      product = ${resPart1._3}""")
 
-//    _ <- Commons.putStrln("Part 2...")
+    _           <- Commons.putStrln("Part 1...")
+
+    resPart2    = part2(guardStates)
+    _ <- Commons.putStrln(s"""Minute where guard is most asleep = ${resPart2._1}
+      Guard most asleep = ${resPart2._2}
+      product = ${resPart2._3}""")
+
+    //    _ <- Commons.putStrln("Part 2...")
 //    resPart2 <- part2[IO]
 //    _ <- Commons.putStrln(s"Result = $resPart2")
 
